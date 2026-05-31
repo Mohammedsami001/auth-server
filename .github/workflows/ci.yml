@@ -42,6 +42,7 @@ jobs:
     name: Build & Push Docker Image
     runs-on: ubuntu-latest
     needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     permissions:
       contents: read
       packages: write
@@ -68,3 +69,17 @@ jobs:
         tags: |
           ghcr.io/${{ github.repository_owner }}/auth-server:latest
           ghcr.io/${{ github.repository_owner }}/auth-server:${{ github.sha }}
+
+  deploy:
+    name: Trigger Render Deployment
+    runs-on: ubuntu-latest
+    needs: docker-build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+      - name: Trigger Deploy Hook
+        if: env.RENDER_DEPLOY_HOOK != ''
+        run: |
+          echo "Triggering Render deployment..."
+          curl -s -X POST "${{ secrets.RENDER_DEPLOY_HOOK }}"
+        env:
+          RENDER_DEPLOY_HOOK: ${{ secrets.RENDER_DEPLOY_HOOK }}
