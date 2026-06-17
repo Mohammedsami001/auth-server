@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	"github.com/roshankumar0036singh/auth-server/internal/config"
@@ -16,25 +17,22 @@ import (
 )
 
 var (
-	ErrSelfLock      = errors.New("admin cannot lock their own account")
-	ErrAdminLock     = errors.New("admin accounts cannot be locked")
-	ErrAlreadyLocked = errors.New("account is already locked")
-	ErrNotLocked     = errors.New("account is not locked")
-
-	ErrMFANotEnabled     = errors.New("MFA is not enabled for this account")
+	ErrSelfLock           = errors.New("admin cannot lock their own account")
+	ErrAdminLock          = errors.New("admin accounts cannot be locked")
+	ErrAlreadyLocked      = errors.New("account is already locked")
+	ErrNotLocked          = errors.New("account is not locked")
+	ErrTooManyAttempts    = errors.New("too many failed attempts, please try again later")
 	ErrInvalidMFACode    = errors.New(errInvalidTOTPCode)
-	ErrIncorrectPassword = errors.New("incorrect password")
+	ErrServiceUnavailable = errors.New("authentication service temporarily unavailable")
 )
 
 const (
-	errGenAccessToken    = "failed to generate access token"
-	errGenRefreshToken   = "failed to generate refresh token"
-	errStoreRefreshToken = "failed to store refresh token"
-	errHashPassword      = "failed to hash password"
-	errInvalidTOTPCode   = "invalid TOTP code"
+	errGenAccessToken        = "failed to generate access token"
+	errGenRefreshToken       = "failed to generate refresh token"
+	errStoreRefreshToken     = "failed to store refresh token"
+	errHashPassword          = "failed to hash password"
+	loginAttemptCacheTimeout = 5 * time.Second
 )
-
-const errUserNotFound = "user not found"
 
 type AuthService struct {
 	userRepo          *repository.UserRepository
@@ -396,7 +394,10 @@ func (s *AuthService) VerifyLoginMFA(mfaToken, code, ipAddress, userAgent string
 
 	user, err := s.userRepo.FindByID(userID)
 	if err != nil {
-		return nil, ErrUserNotFound
+		s.incrementAttempts(ctx, rateLimitKey)
+		s.auditService.LogEvent(nil, "MFA_LOGIN_UNKNOWN_EMAIL", "SYSTEM", "", ipAddress, userAgent,
+			map[string]interface{}{"email": sanitizeForLog(normalizedEmail)})
+		return nil, ErrInvalidMFACode
 	}
 
 	if !user.MFAEnabled {
@@ -419,9 +420,7 @@ func (s *AuthService) VerifyLoginMFA(mfaToken, code, ipAddress, userAgent string
 	}
 
 	s.auditService.LogEvent(&user.ID, "USER_LOGIN_SUCCESS_MFA", "USER", user.ID, ipAddress, userAgent, nil)
-
 	return response, nil
-
 }
 
 // Register creates a new user account and sends verification email
@@ -715,7 +714,7 @@ func (s *AuthService) RefreshAccessToken(refreshTokenString string, ipAddress, u
 	// Get user
 	user, err := s.userRepo.FindByID(claims.UserID)
 	if err != nil {
-		return nil, errors.New(errUserNotFound)
+		return nil, ErrUserNotFound
 	}
 
 	// Token rotation: Generate new refresh token
