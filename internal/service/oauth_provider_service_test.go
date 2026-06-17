@@ -13,7 +13,7 @@ import (
 func TestOAuthProviderService(t *testing.T) {
 	_, db, _ := testutils.SetupIntegrationTest(t)
 
-	db.Exec(`CREATE TABLE oauth_clients (
+	db.Exec(`CREATE TABLE IF NOT EXISTS oauth_clients (
 		id text PRIMARY KEY,
 		name text NOT NULL,
 		client_id text NOT NULL,
@@ -25,7 +25,7 @@ func TestOAuthProviderService(t *testing.T) {
 		created_at datetime,
 		updated_at datetime
 	)`)
-	db.Exec(`CREATE TABLE oauth_provider_configs (
+	db.Exec(`CREATE TABLE IF NOT EXISTS oauth_provider_configs (
 		id text PRIMARY KEY,
 		client_id text NOT NULL,
 		provider text NOT NULL,

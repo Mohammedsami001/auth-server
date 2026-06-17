@@ -135,12 +135,14 @@ func (h *OAuthHandler) Authorize(c *gin.Context) {
 	}
 
 	c.HTML(http.StatusOK, "oauth_consent.html", gin.H{
-		"ClientName":  client.Name,
-		"ClientID":    clientID,
-		"RedirectURI": redirectURI,
-		"Scope":       scope,
-		"Scopes":      scopeDescriptions,
-		"State":       state,
+		"ClientName":          client.Name,
+		"ClientID":            clientID,
+		"RedirectURI":         redirectURI,
+		"Scope":               scope,
+		"Scopes":              scopeDescriptions,
+		"State":               state,
+		"CodeChallenge":       codeChallenge,
+		"CodeChallengeMethod": codeChallengeMethod,
 	})
 }
 
@@ -168,6 +170,10 @@ func (h *OAuthHandler) AuthorizePost(c *gin.Context) {
 	state := c.PostForm("state")
         codeChallenge := c.PostForm("code_challenge")
         codeChallengeMethod := c.PostForm("code_challenge_method")
+
+	if codeChallenge != "" && codeChallengeMethod == "" {
+		codeChallengeMethod = "S256"
+	}
 
 	// Check if user denied
 	if action == "deny" {
@@ -407,4 +413,11 @@ type UserInfoResponse struct {
 	GivenName     string   `json:"given_name,omitempty"`
 	FamilyName    string   `json:"family_name,omitempty"`
 	Scopes        []string `json:"scopes"`
+}
+
+func strPtr(s string) *string {
+	if s == "" {
+		return nil
+	}
+	return &s
 }
