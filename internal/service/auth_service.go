@@ -789,8 +789,11 @@ func (s *AuthService) Logout(accessToken, refreshToken string) error {
 	if accessToken != "" {
 		claims, err := s.tokenService.ValidateAccessToken(accessToken)
 		if err == nil {
-			if err := s.cacheService.BlacklistToken(ctx, claims.ID, 15*time.Minute); err != nil {
-				log.Printf("Warning: Failed to blacklist access token: %v", err)
+			ttl := time.Until(claims.ExpiresAt.Time)
+			if ttl > 0 {
+				if err := s.cacheService.BlacklistToken(ctx, claims.ID, ttl); err != nil {
+					log.Printf("Warning: Failed to blacklist access token: %v", err)
+				}
 			}
 		} else {
 			log.Printf("Warning: Failed to validate access token during logout: %v", err)
@@ -815,8 +818,11 @@ func (s *AuthService) LogoutAll(userID string, currentAccessToken string) error 
 	if currentAccessToken != "" {
 		claims, err := s.tokenService.ValidateAccessToken(currentAccessToken)
 		if err == nil {
-			if err := s.cacheService.BlacklistToken(ctx, claims.ID, 15*time.Minute); err != nil {
-				log.Printf("Warning: Failed to blacklist access token: %v", err)
+			ttl := time.Until(claims.ExpiresAt.Time)
+			if ttl > 0 {
+				if err := s.cacheService.BlacklistToken(ctx, claims.ID, ttl); err != nil {
+					log.Printf("Warning: Failed to blacklist access token: %v", err)
+				}
 			}
 		} else {
 			log.Printf("Warning: Failed to validate access token during logout all: %v", err)
