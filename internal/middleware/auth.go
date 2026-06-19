@@ -10,12 +10,24 @@ import (
 )
 
 // AuthMiddleware validates JWT tokens and attaches user info to context (Strict)
-func AuthMiddleware(tokenService *service.TokenService) gin.HandlerFunc {
+func AuthMiddleware(tokenService *service.TokenService, cacheService *service.CacheService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		tokenString := getAuthToken(c)
 
 		if tokenString == "" {
 			c.JSON(http.StatusUnauthorized, utils.UnauthorizedResponse("Authentication required"))
+			c.Abort()
+			return
+		}
+
+		blacklisted, err := cacheService.IsTokenBlacklisted(c.Request.Context(), tokenString)
+		if err != nil {
+			utils.InternalServerErrorResponse(c, "Failed to authenticate request")
+			c.Abort()
+			return
+		}
+		if blacklisted {
+			c.JSON(http.StatusUnauthorized, utils.UnauthorizedResponse("Invalid or expired token"))
 			c.Abort()
 			return
 		}
@@ -33,14 +45,17 @@ func AuthMiddleware(tokenService *service.TokenService) gin.HandlerFunc {
 }
 
 // OptionalAuthMiddleware validates JWT if present, but doesn't abort if missing
-func OptionalAuthMiddleware(tokenService *service.TokenService) gin.HandlerFunc {
+func OptionalAuthMiddleware(tokenService *service.TokenService, cacheService *service.CacheService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		tokenString := getAuthToken(c)
 
 		if tokenString != "" {
-			claims, err := tokenService.ValidateAccessToken(tokenString)
-			if err == nil {
-				setContextUser(c, claims)
+			blacklisted, err := cacheService.IsTokenBlacklisted(c.Request.Context(), tokenString)
+			if err == nil && !blacklisted {
+				claims, err := tokenService.ValidateAccessToken(tokenString)
+				if err == nil {
+					setContextUser(c, claims)
+				}
 			}
 		}
 
