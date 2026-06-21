@@ -9,6 +9,7 @@ import (
 
 	"github.com/roshankumar0036singh/auth-server/internal/config"
 	"github.com/roshankumar0036singh/auth-server/internal/dto"
+	"github.com/roshankumar0036singh/auth-server/internal/metrics"
 	"github.com/roshankumar0036singh/auth-server/internal/models"
 	"github.com/roshankumar0036singh/auth-server/internal/repository"
 	"github.com/roshankumar0036singh/auth-server/internal/utils"
@@ -566,6 +567,7 @@ func (s *AuthService) Login(req *dto.LoginRequest, ipAddress, userAgent string) 
 	if err != nil {
 		// Increment attempts even for non-existent users (to prevent enumeration)
 		s.cacheService.IncrementLoginAttempts(ctx, req.Email)
+		metrics.LoginFailureTotal.Inc()
 		return nil, errors.New("invalid email or password")
 	}
 
@@ -616,6 +618,8 @@ func (s *AuthService) Login(req *dto.LoginRequest, ipAddress, userAgent string) 
 	if err != nil {
 		return nil, err
 	}
+
+	metrics.LoginSuccessTotal.Inc()
 
 	// Audit Log
 	s.auditService.LogEvent(&user.ID, "USER_LOGIN_SUCCESS", "USER", user.ID, ipAddress, userAgent, nil)
@@ -697,6 +701,8 @@ func (s *AuthService) handleFailedLogin(user *models.User, email string, ctx con
 
 	s.userRepo.Update(user.ID, updates)
 
+	metrics.LoginFailureTotal.Inc()
+
 	// Audit Log Failed Login
 	s.auditService.LogEvent(&user.ID, "USER_LOGIN_FAILED", "USER", user.ID, "", "", map[string]interface{}{"email": email})
 }
@@ -734,7 +740,7 @@ func (s *AuthService) verifyRefreshTokenState(ctx context.Context, refreshTokenS
 		}
 		return nil, "", false, errors.New(errInvalidOrExpiredRefreshToken)
 	}
-	
+
 	return storedToken, claims.UserID, false, nil
 }
 
